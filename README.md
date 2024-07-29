@@ -43,7 +43,7 @@ If it's not working, just try to clear your browser cache.`
 
 ## Configuration:
 
-And add a card with type `custom:css-swipe-card`:
+Add a card with type `custom:css-swipe-card`:
 
 ```yaml
 - type: custom:css-swipe-card
