@@ -1,5 +1,7 @@
 # CSS-Swipe-Card
 
+![readme-images-bubble-card](https://github.com/Nemuritor01/css-swipe-card/blob/main/.github/css-swipe-card.png)
+
 CSS-Swipe-Card is a minimalist and customizable card, that lets you flick through a slider-carousel of cards.
 This card is written in CSS and Java Script and not using any third party library.
 
