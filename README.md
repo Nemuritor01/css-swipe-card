@@ -5,6 +5,10 @@
 CSS-Swipe-Card is a minimalist and customizable card, that lets you flick through a slider-carousel of cards.
 This card is written in CSS and Java Script and not using any third party library.
 
+Please note, that I´ve created this card for my personal use in the first place.
+I´m not a full time developer, but an IT guy.
+The code might not follow best practise methods. Contributors are welcome.
+
 <br>
 
 ## Table of contents
