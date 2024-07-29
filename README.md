@@ -67,23 +67,24 @@ And add a card with type `custom:css-swipe-card`:
 Option `custom_css:`gives the ability to customize lots of css variables
 
 | Variable | Default |
-| --pagination-bullet-active-background-color | var(--primary-text-color) |
-| --pagination-bullet-background-color | var(--primary-background-color) |
-| --pagination-bullet-border | 1px solid #999 |
-| --pagination-bullet-distance | 10px |
-| --navigation-button-next-color var(--primary-text-color) |
-| --navigation-button-next-background-color | var(--primary-background-color) |
-| --navigation-button-next-width | 40px |
-| --navigation-button-next-height | 40px |
-| --navigation-button-next-border-radius | 100% |
-| --navigation-button-next-border | none |
-| --navigation-button-prev-color | var(--primary-text-color) |
-| --navigation-button-prev-background-color | var(--primary-background-color) |
-| --navigation-button-prev-width | 40px |
-| --navigation-button-prev-height | 40px |
-| --navigation-button-prev-border-radius | 100% |
-| --navigation-button-prev-border | none |
-| --navigation-button-distance | 10px |
+| -------- | ------- |
+| `--pagination-bullet-active-background-color` | var(--primary-text-color) |
+| `--pagination-bullet-background-color` | var(--primary-background-color) |
+| `--pagination-bullet-border` | 1px solid #999 |
+| `--pagination-bullet-distance` | 10px |
+| `--navigation-button-next-color` | var(--primary-text-color) |
+| `--navigation-button-next-background-color` | var(--primary-background-color) |
+| `--navigation-button-next-width` | 40px |
+| `--navigation-button-next-height` | 40px |
+| `--navigation-button-next-border-radius` | 100% |
+| `--navigation-button-next-border` | none |
+| `--navigation-button-prev-color` | var(--primary-text-color) |
+| `--navigation-button-prev-background-color` | var(--primary-background-color) |
+| `--navigation-button-prev-width` | 40px |
+| `--navigation-button-prev-height` | 40px |
+| `--navigation-button-prev-border-radius` | 100% |
+| `--navigation-button-prev-border` | none |
+| `--navigation-button-distance` | 10px |
 
 
 Example code
