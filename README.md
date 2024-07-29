@@ -23,7 +23,7 @@ This card is written in CSS and Java Script and not using any third party librar
 
 <br>
 
-1. Download these files: [css-swipe-card.js]([https://github.com/Nemuritor01/css-swipe-card/blob/main/src/css-swipe-card.js])
+1. Download these files: [css-swipe-card.js](https://github.com/Nemuritor01/css-swipe-card/blob/main/src/css-swipe-card.js)
 2. Add these files to your `<config>/www` folder
 3. On your dashboard click on the icon at the right top corner then on `Edit dashboard`
 4. Click again on that icon and then click on `Manage resources`
