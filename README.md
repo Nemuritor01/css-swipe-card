@@ -53,6 +53,7 @@ And add a card with type `custom:css-swipe-card`:
 
 | Name | Type | Default | Supported options | Description |
 | ---- | ---- | ------- | ----------------- | ----------- |
+| `template` | string | slider-horizontal | slider-horizontal, slider-vertical |
 | `width` | string | | Any css option that fits in the `width` css value | Will force the width of the swiper container |
 | `height` | string | | Any css option that fits in the `height` css value |
 | `auto_height` | boolean | false | true, false | force the same heigth, based on the tallest card |
