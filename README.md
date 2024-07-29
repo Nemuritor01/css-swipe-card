@@ -31,7 +31,7 @@ This card is written in CSS and Java Script and not using any third party librar
 6. Copy and paste this: `/local/css-swipe-card.js?v=1`
 7. Click on `JavaScript Module` then `Create`
 8. Go back and refresh your page
-9. After any update of the file you will have to edit `/local/cs-swipe-card.js?v=1` and change the version to any higher number
+9. After any update of the file you will have to edit `/local/css-swipe-card.js?v=1` and change the version to any higher number
 
 If it's not working, just try to clear your browser cache.`
 
