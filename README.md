@@ -23,6 +23,35 @@ The code might not follow best practise methods. Contributors are welcome.
 
 <details>
 
+<summary>With HACS</summary>
+
+<br>
+
+1. Open HACS (installation instructions are [here](https://hacs.xyz/docs/setup/prerequisites/).
+2. Open the menu in the upper-right and select `Custom repositories`.
+3. Enter the repository: `https://github.com/Nemuritor01/css-swipe-card`
+4. Select the category `Lovelace`.
+5. Select `ADD`.
+6. Confirm the repository now appears in your HACS custom repositories list. Select `CANCEL` to close the custom repository window.
+7. In the HACS search, type `CSS-Swipe-Card`.
+8. Select the `CSS-Swipe-Card` Respository from the list.
+9. Install the Repository.
+10. Make sure to add to resources via one of the following:
+    - If using the GUI Resource option, this should have been added automatically.
+    - If using the `configuration.yaml`, open your `configuration.yaml` via File editor or other means and add:
+      ```
+      lovelace:
+        mode: yaml
+        resources:
+          - url: /hacsfiles/css-swipe-card/css-swipe-card.js
+            type: module
+      ```
+11. Reload your browser. If the card does not show, try to clear your browser cache.
+
+</details>
+
+<details>
+
 <summary>Without HACS</summary>
 
 <br>
