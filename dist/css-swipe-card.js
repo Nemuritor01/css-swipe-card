@@ -1,6 +1,6 @@
 class CssSwipeCard extends HTMLElement {
     static get version() {
-      return 'v0.7.5';
+      return 'v0.7.6';
     }
   
     constructor() {
@@ -336,10 +336,13 @@ class CssSwipeCard extends HTMLElement {
       this._cards.forEach((card, index) => {
         const label = document.createElement('label');
         label.classList.add(`pagination-bullet-${index + 1}`);
-        label.addEventListener('click', () => this.scrollToCard(index));
+        label.addEventListener('click', () => {
+          this.scrollToCard(index);
+          this.resetTimer(); // Reset the timer when clicking pagination bullets
+        });
         paginationControl.appendChild(label);
       });
-  
+
       this.updatePagination();
     }
     
@@ -350,7 +353,6 @@ class CssSwipeCard extends HTMLElement {
         [isHorizontal ? 'left' : 'top']: index * (isHorizontal ? slider.clientWidth : slider.clientHeight),
         behavior: 'smooth'
       });
-      this.resetTimer(); // Reset the timer after scrolling
     }
   
     updatePagination() {
@@ -389,17 +391,32 @@ class CssSwipeCard extends HTMLElement {
         slider.addEventListener('scroll', () => this.resetTimer());
         slider.addEventListener('click', () => this.resetTimer());
         slider.addEventListener('touchend', () => this.resetTimer());
+      
+        // Add event listeners for pagination and navigation buttons
+        const paginationControl = this.shadowRoot.querySelector('.pagination-control');
+        if (paginationControl) {
+          paginationControl.addEventListener('click', () => this.resetTimer());
+        }
+        const navigationButtons = this.shadowRoot.querySelectorAll('.navigation-button');
+        navigationButtons.forEach(button => {
+          button.addEventListener('click', () => this.resetTimer());
+        });
       }
     }
   
     resetTimer() {
       if (this.timerInterval) {
-        clearInterval(this.timerInterval);
+        clearTimeout(this.timerInterval);
       }
-      this.timerInterval = setTimeout(() => {
-        const slider = this.shadowRoot.querySelector(`.${this.config.template}`);
-        this.scrollToCard(0); // Always scroll to the first card (index 0)
-      }, this.config.timer * 1000);
+      if (this.config.timer > 0) {
+        this.timerInterval = setTimeout(() => {
+          const slider = this.shadowRoot.querySelector(`.${this.config.template}`);
+          const isHorizontal = this.config.template === 'slider-horizontal';
+          const currentIndex = Math.round(isHorizontal ? slider.scrollLeft / slider.clientWidth : slider.scrollTop / slider.clientHeight);
+          const nextIndex = (currentIndex + 1) % this._cards.length;
+          this.scrollToCard(nextIndex);
+        }, this.config.timer * 1000);
+      }
     }
     
     disconnectedCallback() {
