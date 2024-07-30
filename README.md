@@ -84,12 +84,11 @@ Add a card with type `custom:css-swipe-card`:
 | ---- | ---- | ------- | ----------------- | ----------- |
 | `template` | string | slider-horizontal | slider-horizontal, slider-vertical |
 | `width` | string | | Any css option that fits in the `width` css value | Will force the width of the swiper container |
-| `height` | string | | Any css option that fits in the `height` css value |
+| `height` | string | | Any css option that fits in the `height` css value | Will force the height of the swiper container |
 | `auto_height` | boolean | false | true, false | force the same heigth, based on the tallest card |
 | `card_gap` | string | 0px | Any css option that fits in the `width` css value | |
-| `timer` | number | | Any number | Will reset the swiper to the first card after `timer` seconds |
+| `timer` | number | 0 | Any number | Will reset the swiper to the first card after `timer` seconds |
 | `pagination` | boolean | false | true, false | enable pagination bullets |
-| `navigation` | boolean | false | true, false | enable navigation buttons |
 | `navigation` | boolean | false | true, false | enable navigation buttons |
 | `navigation_next` | icon | none | any icon in home assistant (mdi:xxx; fas:xxx) | set icon in navigation button next |
 | `navigation_prev` | icon | none | any icon in home assistant (mdi:xxx; fas:xxx) | set icon in navigation button previous |
