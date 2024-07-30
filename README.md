@@ -125,7 +125,7 @@ Example code
 ```yaml
 type: custom:css-swipe-card
 template: slider-horizontal
-auto_height: true
+auto_height: false
 pagination: true
 navigation: true
 card_gap: 2rem
@@ -133,7 +133,6 @@ timer: 3
 navigation_next: mdi:chevron-right
 navigation_prev: mdi:chevron-left
 height: 10rem
-align_cards: flex-end
 cards:
   - type: entity
     entity: sensor.your_sensor
