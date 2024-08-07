@@ -1,11 +1,12 @@
 class CssSwipeCard extends HTMLElement {
   static get version() {
-    return 'v0.7.6';
+    return 'v0.7.7';
   }
 
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
+    this._boundHandleEvent = this.handleEvent.bind(this);
   }
 
   setConfig(config) {
@@ -13,8 +14,9 @@ class CssSwipeCard extends HTMLElement {
       throw new Error('You need to define cards');
     }
 
-    // Generate a unique identifier for this card instance
-    this.cardId = `css-swipe-card-${Math.random().toString(36).substr(2, 9)}`;
+    // Use user-defined cardId if provided, otherwise generate one
+    this.cardId = config.cardId || `css-swipe-card-${Math.random().toString(36).substr(2, 9)}`;
+    console.log(`Card ID set to: ${this.cardId}`);
 
     this.config = {
       width: '100%',
@@ -28,12 +30,35 @@ class CssSwipeCard extends HTMLElement {
       navigation_next: '',
       navigation_prev: '',
       custom_css: {},
+      cardId: this.cardId, // Include cardId in the config
       ...config
     };
 
+    // Remove the window event listener
+    if (this._boundHandleEvent) {
+      window.removeEventListener('css-swipe-card-scroll', this._boundHandleEvent);
+    }
+
+    this._config = config;
+    
     this.render();
   }
 
+  handleEvent(event) {
+    console.log('handleEvent called with event:', event);
+    if (event.event_type === 'css-swipe-card-scroll' && event.data) {
+      console.log(`Received cardId: ${event.data.cardId}, This card's ID: ${this.cardId}`);
+      if (event.data.cardId === this.cardId) {
+        console.log('Card ID matched. Scrolling to index:', event.data.index);
+        this.scrollToCardByIndex(event.data.index);
+      } else {
+        console.log('Card ID did not match');
+      }
+    } else {
+      console.log('Event type not recognized or data is undefined');
+    }
+  }
+  
   async render() {
     const styles = `
       :host {
@@ -221,7 +246,7 @@ class CssSwipeCard extends HTMLElement {
     `;
 
     const html = `
-      <div id="${this.cardId}">
+            <div id="${this.cardId}">
         <div class="${this.config.template}"></div>
         ${this.config.pagination ? `<div class="pagination-control ${this.config.template === 'slider-horizontal' ? 'horizontal' : 'vertical'}"></div>` : ''}
         ${this.config.navigation ? `
@@ -251,7 +276,10 @@ class CssSwipeCard extends HTMLElement {
     }
 
     if (this.config.auto_height) {
-      setTimeout(() => this.adjustCardContainerHeight(), 100);
+      // Wait for the next frame to ensure all cards are rendered
+      requestAnimationFrame(() => {
+        this.adjustCardContainerHeight();
+      });
     } else {
       this.setManualHeight();
     }
@@ -320,12 +348,22 @@ class CssSwipeCard extends HTMLElement {
   }
 
   set hass(hass) {
+    if (!this._hass) {
+      console.log(`Setting up event listener for card: ${this.cardId}`);
+      hass.connection.subscribeEvents((event) => {
+        console.log('Received event:', event);
+        if (event.event_type === 'css-swipe-card-scroll') {
+          this.handleEvent(event);
+        }
+      }, 'css-swipe-card-scroll');
+    }
+
     this._hass = hass;
     const cardContainer = this.shadowRoot.querySelector(`.${this.config.template}`);
     if (cardContainer) {
       cardContainer.childNodes.forEach((child) => {
         if (child.firstChild) {
-          child.firstChild.hass = hass;
+         child.firstChild.hass = hass;
         }
       });
     }
@@ -353,6 +391,19 @@ class CssSwipeCard extends HTMLElement {
     if (this.config.timer > 0) {
       this.resetTimer(); // Reset the timer after scrolling
     }
+  }
+
+  scrollToCardByIndex(index) {
+    const slider = this.shadowRoot.querySelector(`.${this.config.template}`);
+    if (!slider) {
+      return;
+    }
+    const isHorizontal = this.config.template === 'slider-horizontal';
+    const scrollPosition = index * (isHorizontal ? slider.clientWidth : slider.clientHeight);
+    slider.scrollTo({
+      [isHorizontal ? 'left' : 'top']: scrollPosition,
+      behavior: 'smooth'
+    });
   }
 
   updatePagination() {
@@ -410,5 +461,4 @@ class CssSwipeCard extends HTMLElement {
     }
   }
 }
-
 customElements.define('css-swipe-card', CssSwipeCard);
