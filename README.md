@@ -202,7 +202,26 @@ action:
 
 ```
 
+or use it in an automation directly.
 
+Example
+
+```
+alias: Your Automation Name
+description: ""
+trigger:
+  - platform: state
+    entity_id:
+      - input_boolean.your_switch
+    from: "off"
+condition: []
+action:
+  - event: css-swipe-card-scroll
+    event_data:
+      cardId: YourUniqueCardID
+      index: card number in the index (0 = first card)
+mode: single
+```
 ## Credits
 
 Credits to Bram Kragten. Some functions are based on his card code.
