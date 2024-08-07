@@ -153,7 +153,7 @@ custom_css:
 ```
 ## Automations:
 Interactions with Home Assistant automations via custom-event.
-CSS-Swipe-Card is listening on the Home Assistant event bus for the event
+CSS-Swipe-Card is listening on the Home Assistant event bus. When receiving the event, it scrolls to the defined card.
 
 | HA | Custom_Event |
 | -------- | ------- |
@@ -196,7 +196,7 @@ trigger:
       seconds: 0
 condition: []
 action:
-  - service: script.scroll_test
+  - service: script.your_script_name
     data: {}
 
 ```
