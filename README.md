@@ -13,7 +13,7 @@ The code might not follow best practise methods. Contributors are welcome.
 
 ## Table of contents
 
-**[`Installation`](#installation)**  **[`Configuration`](#configuration)**  **[`Styling`](#styling)**  **[`Credits`](#credits)** 
+**[`Installation`](#installation)**  **[`Configuration`](#configuration)** **[`Styling`](#styling)**  **[`Automations`](#automations)**  **[`Credits`](#credits)** 
 
 <br>
 
@@ -82,8 +82,8 @@ Add a card with type `custom:css-swipe-card`:
 
 | Name | Type | Default | Supported options | Description |
 | ---- | ---- | ------- | ----------------- | ----------- |
+| `cardId` | string | automatic calculation | a unique card ID you can use to trigger the card in automations |
 | `template` | string | slider-horizontal | slider-horizontal, slider-vertical |
-| `width` | string | | Any css option that fits in the `width` css value | Will force the width of the swiper container |
 | `height` | string | | Any css option that fits in the `height` css value | Will force the height of the swiper container |
 | `auto_height` | boolean | false | true, false | force the same heigth, based on the tallest card |
 | `card_gap` | string | 0px | Any css option that fits in the `width` css value | |
@@ -151,6 +151,56 @@ custom_css:
   '--pagination-bullet-active-background-color': cornflowerblue
   '--pagination-bullet-distance': 5px
 ```
+## Automations:
+Interactions with Home Assistant automations via custom-event.
+CSS-Swipe-Card is listening on the Home Assistant event bus for the event
+
+| HA | Custom_Event |
+| -------- | ------- |
+| event | `css-swipe-card-scroll` |
+
+| HA | Custom_Event | Description
+| ---------- | -------- | --------- |
+| event_data | `cardId` | the card Id you have defined in your CSS-Swipe-Card config|
+| event_data | `index` | the card you want to scroll to - first card = 0 |
+
+Instruction:
+1. Define a unique cardId in your CSS-Swipe-Card config
+2. Create a script:
+```yaml
+alias: scroll test
+sequence:
+  - event: css-swipe-card-scroll
+    event_data:
+      cardId: #yoursliderid
+      index: scrolltocardX
+
+```
+3. Use it in automations
+Define a trigger and use call-service: script.your_script_name
+
+Example:
+
+```yaml
+alias: your-automation-name
+description: ""
+trigger:
+  - platform: state
+    entity_id:
+      - input_boolean.your_switch
+    from: "off"
+    to: "on"
+    for:
+      hours: 0
+      minutes: 0
+      seconds: 0
+condition: []
+action:
+  - service: script.scroll_test
+    data: {}
+
+```
+
 
 ## Credits
 
