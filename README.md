@@ -123,6 +123,7 @@ Example code
 
 ```yaml
 type: custom:css-swipe-card
+cardId: YourUniqueCardName
 template: slider-horizontal
 auto_height: false
 pagination: true
