@@ -197,7 +197,7 @@ condition: []
     target:
       entity_id: input_number.YourCardId
 mode: single
-
+```
 
 ## Credits
 
