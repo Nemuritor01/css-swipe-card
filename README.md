@@ -170,8 +170,8 @@ Instruction:
 
 3. Use it in automations
 Define a trigger and use action: input_number.set_value. The value should be the card you want to scroll to 
-1 = first card
-2 = second card
+- 1 = first card
+- 2 = second card
 etc.
 
 Example:
