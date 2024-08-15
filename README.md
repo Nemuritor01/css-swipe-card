@@ -163,10 +163,10 @@ Instruction:
 2. Create an input_number helper.
    [create a number helper](https://www.home-assistant.io/integrations/input_number/)
     
-   name: cardId of your css-swipe-card
-   min: 0 (must be 0!)
-   max: amount of cards (if 4 cards enter 4)
-   step: 1
+- name: cardId of your css-swipe-card
+- min: 0 (must be 0!)
+- max: amount of cards (if 4 cards enter 4)
+- step: 1
 
 3. Use it in automations
 Define a trigger and use action: input_number.set_value. The value should be the card you want to scroll to 
