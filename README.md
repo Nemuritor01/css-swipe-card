@@ -1,6 +1,6 @@
 # CSS-Swipe-Card
 
-![readme-images-bubble-card](https://github.com/Nemuritor01/css-swipe-card/blob/main/.github/css-swipe-card.png)
+![readme-images-css-swipe-card](https://github.com/Nemuritor01/css-swipe-card/blob/main/.github/css-swipe-card.png)
 
 CSS-Swipe-Card is a minimalist and customizable card, that lets you flick through a slider-carousel of cards.
 This card is written in CSS and Java Script and not using any third party library.
@@ -100,6 +100,7 @@ Option `custom_css:`gives the ability to customize lots of css variables
 
 | Variable | Default |
 | -------- | ------- |
+| `--slides-align-items` | center |
 | `--pagination-bullet-active-background-color` | var(--primary-text-color) |
 | `--pagination-bullet-background-color` | var(--primary-background-color) |
 | `--pagination-bullet-border` | 1px solid #999 |
@@ -125,7 +126,7 @@ Example code
 type: custom:css-swipe-card
 cardId: YourUniqueCardName
 template: slider-horizontal
-auto_height: false
+auto_height: true
 pagination: true
 navigation: true
 card_gap: 2rem
@@ -153,32 +154,25 @@ custom_css:
   '--pagination-bullet-distance': 5px
 ```
 ## Automations:
-Interactions with Home Assistant automations via custom-event.
-CSS-Swipe-Card is listening on the Home Assistant event bus. When receiving the event, it scrolls to the defined card.
-
-| HA | Custom_Event |
-| -------- | ------- |
-| event | `css-swipe-card-scroll` |
-
-| HA | Custom_Event | Description
-| ---------- | -------- | --------- |
-| event_data | `cardId` | the card Id you have defined in your CSS-Swipe-Card config|
-| event_data | `index` | the card you want to scroll to - first card = 0 |
+Interactions with Home Assistant automations via input_number helper.
+CSS-Swipe-Card is able to monitor and interact with a user created input_number helper. The card monitors, if an input_number.YourCardId helper is availble. If an input number is set, the card will scroll to this card and reset the input_number helper.
 
 Instruction:
 1. Define a unique cardId in your CSS-Swipe-Card config
-2. Create a script:
-```yaml
-alias: scroll test
-sequence:
-  - event: css-swipe-card-scroll
-    event_data:
-      cardId: #yoursliderid
-      index: scrolltocardX
 
-```
+2. Create an input_number helper.
+   [create a number helper](https://www.home-assistant.io/integrations/input_number/)
+    
+   name: cardId of your css-swipe-card
+   min: 0 (must be 0!)
+   max: amount of cards (if 4 cards enter 4)
+   step: 1
+
 3. Use it in automations
-Define a trigger and use call-service: script.your_script_name
+Define a trigger and use action: input_number.set_value. The value should be the card you want to scroll to 
+1 = first card
+2 = second card
+etc.
 
 Example:
 
@@ -196,32 +190,15 @@ trigger:
       minutes: 0
       seconds: 0
 condition: []
-action:
-  - service: script.your_script_name
-    data: {}
-
-```
-
-or use it in an automation directly.
-
-Example
-
-```
-alias: Your Automation Name
-description: ""
-trigger:
-  - platform: state
-    entity_id:
-      - input_boolean.your_switch
-    from: "off"
-condition: []
-action:
-  - event: css-swipe-card-scroll
-    event_data:
-      cardId: YourUniqueCardID
-      index: card number in the index (0 = first card)
+  - action: input_number.set_value
+    metadata: {}
+    data:
+      value: 1
+    target:
+      entity_id: input_number.YourCardId
 mode: single
-```
+
+
 ## Credits
 
 Credits to Bram Kragten. Some functions are based on his card code.
