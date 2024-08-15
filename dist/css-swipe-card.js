@@ -1,26 +1,25 @@
 class CssSwipeCard extends HTMLElement {
   static get version() {
-    return 'v0.7.7';
+    return 'v0.8.0';
   }
 
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
-    this._boundHandleEvent = this.handleEvent.bind(this);
+    this.currentIndex = 0;
+    this.resizeObserver = null;
   }
 
+  // Core setup and rendering methods
   setConfig(config) {
     if (!config || !config.cards || !Array.isArray(config.cards)) {
       throw new Error('You need to define cards');
     }
 
-    // Use user-defined cardId if provided, otherwise generate one
     this.cardId = config.cardId || `css-swipe-card-${Math.random().toString(36).substr(2, 9)}`;
-    console.log(`Card ID set to: ${this.cardId}`);
 
     this.config = {
       width: '100%',
-      height: '100%',
       template: 'slider-horizontal',
       auto_height: false,
       card_gap: '0px',
@@ -30,39 +29,69 @@ class CssSwipeCard extends HTMLElement {
       navigation_next: '',
       navigation_prev: '',
       custom_css: {},
-      cardId: this.cardId, // Include cardId in the config
+      cardId: this.cardId,
       ...config
     };
 
-    // Remove the window event listener
-    if (this._boundHandleEvent) {
-      window.removeEventListener('css-swipe-card-scroll', this._boundHandleEvent);
-    }
-
-    this._config = config;
-    
     this.render();
   }
 
-  handleEvent(event) {
-    console.log('handleEvent called with event:', event);
-    if (event.event_type === 'css-swipe-card-scroll' && event.data) {
-      console.log(`Received cardId: ${event.data.cardId}, This card's ID: ${this.cardId}`);
-      if (event.data.cardId === this.cardId) {
-        console.log('Card ID matched. Scrolling to index:', event.data.index);
-        this.scrollToCardByIndex(event.data.index);
-      } else {
-        console.log('Card ID did not match');
-      }
+  async render() {
+    const styles = this.getStyles();
+    const html = this.getHtml();
+
+    this.shadowRoot.innerHTML = `<style>${styles}</style>${html}`;
+
+    const cardContainer = this.shadowRoot.querySelector(`.${this.config.template}`);
+    this._cards = [];
+
+    for (const [index, cardConfig] of this.config.cards.entries()) {
+      const card = await this.createCardElement(cardConfig);
+      const slide = document.createElement('div');
+      slide.classList.add('slide');
+      slide.style.width = '100%';
+      slide.dataset.index = index;
+      card.classList.add('card-element');
+      slide.appendChild(card);
+      cardContainer.appendChild(slide);
+      this._cards.push(card);
+    }
+
+    if (this.config.auto_height) {
+      this.setupResizeObserver();
     } else {
-      console.log('Event type not recognized or data is undefined');
+      await this.setManualHeight();
+    }
+
+    this.applyCustomStyles();
+
+    if (this.config.pagination) {
+      this.setupPagination();
+    }
+
+    if (this.config.navigation) {
+      this.setupNavigation();
+    }
+
+    this.setupTimer();
+
+    const slider = this.shadowRoot.querySelector(`.${this.config.template}`);
+    slider.addEventListener('scroll', () => {
+      this.updateCurrentIndex();
+      this.updatePagination();
+    });
+    
+    if (this._hass) {
+      this.checkInputNumberState();
     }
   }
-  
-  async render() {
-    const styles = `
+
+  // HTML and CSS generation methods
+  getStyles() {
+    return `
       :host {
         --slides-gap: ${this.config.card_gap};
+        --slides-align-items: center;
         --pagination-bullet-active-background-color: var(--primary-text-color);
         --pagination-bullet-background-color: var(--primary-background-color);
         --pagination-bullet-border: 1px solid #999;
@@ -80,6 +109,30 @@ class CssSwipeCard extends HTMLElement {
         --navigation-button-prev-border-radius: 100%;
         --navigation-button-prev-border: none;
         --navigation-button-distance: 10px;
+      }
+      #${this.cardId} { 
+        position: relative;
+        overflow: hidden;
+        
+        /* Force hardware acceleration with 3D transform */
+        transform: translateZ(0);
+        -webkit-transform: translateZ(0);
+        -moz-transform: translateZ(0);
+        -ms-transform: translateZ(0);
+        -o-transform: translateZ(0);
+
+        /* Existing properties */
+        backface-visibility: hidden;
+        perspective: 1000;
+        -webkit-backface-visibility: hidden;
+        -webkit-perspective: 1000;
+        -moz-backface-visibility: hidden;
+        -moz-perspective: 1000;
+        -ms-backface-visibility: hidden;
+        -ms-perspective: 1000;
+    
+        will-change: transform;
+        -webkit-overflow-scrolling: touch;
       }
       #${this.cardId} .slider-horizontal {
         display: flex;
@@ -104,24 +157,19 @@ class CssSwipeCard extends HTMLElement {
       }
       #${this.cardId} .slider-horizontal,
       #${this.cardId} .slider-vertical {
-        /* Hide scrollbars for Webkit browsers (Chrome, Safari, newer versions of Opera) */
         &::-webkit-scrollbar {
           display: none;
         }
-
-        /* Hide scrollbars for Firefox */
         scrollbar-width: none;
-
-        /* Hide scrollbars for IE and Edge */
         -ms-overflow-style: none;
+        
       }
       #${this.cardId} .slide {
-        flex: 0 0 100%;
         display: flex;
-        align-items: center;
+        min-width: 100%;
+        align-items: var(--slides-align-items);
         justify-content: center;
         scroll-snap-align: start;
-        scroll-snap-stop: always;
       }
       #${this.cardId} .card-element {
         width: 100% !important;
@@ -147,19 +195,20 @@ class CssSwipeCard extends HTMLElement {
         flex-direction: column;
         gap: 10px;
       }
-      #${this.cardId} .pagination-control label {
-        display: block;
-        width: 7px;
-        height: 7px;
-        border-radius: 50%;
-        background-color: var(--pagination-bullet-background-color);
-        border: var(--pagination-bullet-border);
-        cursor: pointer;
+      #${this.cardId} .pagination-bullet {
+          width: 10px;
+          height: 10px;
+          border-radius: 50%;
+          background-color: var(--pagination-bullet-background-color, var(--primary-background-color));
+          border: var(--pagination-bullet-border, 1px solid #999);
+          cursor: pointer;
+          padding: 0;
+          transition: all 0.3s ease;
       }
-      #${this.cardId} .pagination-control label.active {
-        background-color: var(--pagination-bullet-active-background-color);
-        width: 12px;
-        height: 12px;
+      #${this.cardId} .pagination-bullet.active {
+          background-color: var(--pagination-bullet-active-background-color, var(--primary-text-color));
+          width: 12px;
+          height: 12px;
       }
       #${this.cardId} .navigation-button {
         position: absolute;
@@ -235,18 +284,27 @@ class CssSwipeCard extends HTMLElement {
         -webkit-tap-highlight-color: transparent;
         outline: none;
       }
-      #${this.cardId} .navigation-button:focus, #${this.cardId} .pagination-control label:focus {
-        outline: none;
+      #${this.cardId} .navigation-button ha-icon,
+      #${this.cardId} .pagination-control label {
+        pointer-events: none;
       }
       @keyframes buttonPress {
-        0% { transform: scale(1); }
-        50% { transform: scale(0.8); }
-        100% { transform: scale(1); }
+        0% {
+          transform: scale(1);
+        }
+        50% {
+          transform: scale(0.9);
+        }
+        100% {
+          transform: scale(1);
+        }
       }
     `;
+  }
 
-    const html = `
-            <div id="${this.cardId}">
+  getHtml() {
+    return `
+      <div id="${this.cardId}">
         <div class="${this.config.template}"></div>
         ${this.config.pagination ? `<div class="pagination-control ${this.config.template === 'slider-horizontal' ? 'horizontal' : 'vertical'}"></div>` : ''}
         ${this.config.navigation ? `
@@ -259,55 +317,9 @@ class CssSwipeCard extends HTMLElement {
         ` : ''}
       </div>
     `;
-
-    this.shadowRoot.innerHTML = `<style>${styles}</style>${html}`;
-
-    const cardContainer = this.shadowRoot.querySelector(`.${this.config.template}`);
-    this._cards = [];
-
-    for (const cardConfig of this.config.cards) {
-      const card = await this.createCardElement(cardConfig);
-      const slide = document.createElement('div');
-      slide.classList.add('slide');
-      card.classList.add('card-element');
-      slide.appendChild(card);
-      cardContainer.appendChild(slide);
-      this._cards.push(card);
-    }
-
-    if (this.config.auto_height) {
-      // Wait for the next frame to ensure all cards are rendered
-      requestAnimationFrame(() => {
-        this.adjustCardContainerHeight();
-      });
-    } else {
-      this.setManualHeight();
-    }
-
-    this.applyCustomStyles();
-
-    if (this.config.pagination) {
-      this.setupPagination();
-    }
-
-    if (this.config.navigation) {
-      this.setupNavigation();
-    }
-
-    this.setupTimer();
-
-    const slider = this.shadowRoot.querySelector(`.${this.config.template}`);
-    slider.addEventListener('scroll', () => this.updatePagination());
   }
 
-  applyCustomStyles() {
-    const style = document.createElement('style');
-    style.textContent = Object.entries(this.config.custom_css)
-      .map(([property, value]) => `#${this.cardId} { ${property}: ${value}; }`)
-      .join('\n');
-    this.shadowRoot.appendChild(style);
-  }
-
+  // Card creation and sizing methods
   async createCardElement(cardConfig) {
     const createCard = (await loadCardHelpers()).createCardElement;
     const element = createCard(cardConfig);
@@ -315,109 +327,249 @@ class CssSwipeCard extends HTMLElement {
     return element;
   }
 
-  async adjustCardContainerHeight() {
-    const maxHeight = await this.getCardSize();
-    const cardContainer = this.shadowRoot.querySelector(`.${this.config.template}`);
-    cardContainer.style.height = `${maxHeight}px`;
-
-    this._cards.forEach(card => {
-      card.style.height = `${maxHeight}px`;
-    });
-  }
-
   async getCardSize() {
     if (!this._cards) {
       return 0;
     }
 
-    const heights = await Promise.all(this._cards.map(async (card) => {
-      await card.updateComplete;
-      return card.offsetHeight;
-    }));
+    let maxHeight = 0;
 
-    return Math.max(...heights);
+    for (const card of this._cards) {
+      if (card.getCardSize) {
+        const size = await card.getCardSize();
+        maxHeight = Math.max(maxHeight, size * 50);
+      } else {
+        await card.updateComplete;
+        const rect = card.getBoundingClientRect();
+        maxHeight = Math.max(maxHeight, rect.height);
+      }
+    }
+
+    return maxHeight || 140; // fallback to 140 if maxHeight is 0
   }
 
-  setManualHeight() {
+  async getMaxCardHeight() {
+    let maxHeight = 0;
+    for (const card of this._cards) {
+      await card.updateComplete;  // Ensure card is fully rendered
+      const rect = card.getBoundingClientRect();
+      maxHeight = Math.max(maxHeight, rect.height);
+    }
+    return maxHeight || 140;  // Fallback height
+  }
+
+  // Card container height adjustment methods
+  async adjustCardContainerHeight() {
     const cardContainer = this.shadowRoot.querySelector(`.${this.config.template}`);
-    cardContainer.style.height = this.config.height;
+    const slideContainer = this.shadowRoot.querySelector(`.slide`);
+    const maxHeight = await this.getMaxCardHeight();
+
+    if (this.config.auto_height) {
+        this._cards.forEach(card => {
+            card.style.height = `${maxHeight}px`;
+        });
+        cardContainer.style.height = `${maxHeight}px`;
+        slideContainer.style.height = `${maxHeight}px`;
+    } else {
+        cardContainer.style.height = `${maxHeight}px`;
+        slideContainer.style.height = `${maxHeight}px`;
+        this._cards.forEach(card => {
+            card.style.height = 'auto';  // Keeps native height for cards
+        });
+    }
+
+    if (this.config.height && !this.config.auto_height) {
+        cardContainer.style.height = this.config.height;
+        slideContainer.style.height = this.config.height;
+        this._cards.forEach(card => {
+            card.style.height = this.config.height;
+        });
+    }
+  }
+
+  async setManualHeight() {
+    const cardContainer = this.shadowRoot.querySelector(`.${this.config.template}`);
+    const isHorizontal = this.config.template === 'slider-horizontal';
+
+    if (isHorizontal) {
+      cardContainer.style.height = this.config.height;
+      cardContainer.style.overflowY = 'hidden';
+    } else {
+      // For vertical mode
+      const maxHeight = await this.getMaxCardHeight();
+      cardContainer.style.height = this.config.height || `${maxHeight}px`;
+      cardContainer.style.overflowY = 'auto';
+    }
 
     this._cards.forEach(card => {
-      card.style.height = this.config.height;
+      if (isHorizontal) {
+        card.style.height = this.config.height;
+      } else {
+        card.style.height = 'auto'; // Keep native height for cards in vertical mode
+      }
     });
   }
 
-  set hass(hass) {
-    if (!this._hass) {
-      console.log(`Setting up event listener for card: ${this.cardId}`);
-      hass.connection.subscribeEvents((event) => {
-        console.log('Received event:', event);
-        if (event.event_type === 'css-swipe-card-scroll') {
-          this.handleEvent(event);
-        }
-      }, 'css-swipe-card-scroll');
+  // Resize observer setup
+  setupResizeObserver() {
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect();
     }
 
+    this.resizeObserver = new ResizeObserver(() => {
+      this.adjustCardContainerHeight();
+      this.updateCurrentIndex();
+      this.updatePagination();
+    });
+
+    this._cards.forEach(card => {
+      this.resizeObserver.observe(card);
+    });
+  }
+
+  // Current index update method
+  updateCurrentIndex() {
+    const slider = this.shadowRoot.querySelector(`.${this.config.template}`);
+    const isHorizontal = this.config.template === 'slider-horizontal';
+    const scrollPosition = isHorizontal ? slider.scrollLeft : slider.scrollTop;
+    const viewportSize = isHorizontal ? slider.clientWidth : slider.clientHeight;
+    
+    let accumulatedSize = 0;
+    for (let i = 0; i < this._cards.length; i++) {
+      const cardSize = isHorizontal ? this._cards[i].clientWidth : this._cards[i].clientHeight;
+      if (scrollPosition < accumulatedSize + cardSize / 2) {
+        this.currentIndex = i;
+        break;
+      }
+      accumulatedSize += cardSize;
+    }
+  }
+
+  // Home Assistant integration methods
+  set hass(hass) {
+    const oldHass = this._hass;
     this._hass = hass;
+
+    if (!oldHass) {
+      this.setupInputNumberListener();
+      this.checkInputNumberState();
+    }
+
     const cardContainer = this.shadowRoot.querySelector(`.${this.config.template}`);
     if (cardContainer) {
       cardContainer.childNodes.forEach((child) => {
         if (child.firstChild) {
-         child.firstChild.hass = hass;
+          child.firstChild.hass = hass;
         }
       });
     }
+
+    const inputNumberEntity = `input_number.${this.config.cardId}`;
+    if (oldHass && hass.states[inputNumberEntity] !== oldHass.states[inputNumberEntity]) {
+      this.checkInputNumberState();
+    }
   }
 
+  setupInputNumberListener() {
+    const inputNumberEntity = `input_number.${this.config.cardId}`;
+    this._hass.connection.subscribeEvents(
+      (event) => this.handleInputNumberChange(event),
+      'state_changed',
+      { entity_id: inputNumberEntity }
+    );
+  }
+
+  checkInputNumberState() {
+    const inputNumberEntity = `input_number.${this.config.cardId}`;
+    const state = this._hass.states[inputNumberEntity];
+    if (state) {
+      const inputNumber = parseFloat(state.state);
+      if (inputNumber !== 0) {
+        const calcIndex = this.calcIndex(inputNumber);
+        if (calcIndex >= 0) {
+          requestAnimationFrame(() => {
+            this.scrollToCardByIndex(calcIndex);
+            setTimeout(() => {
+              this.resetInputNumber();
+            }, 500);
+          });
+        }
+      }
+    }
+  }
+
+  handleInputNumberChange(event) {
+    if (event.data.entity_id === `input_number.${this.config.cardId}`) {
+      const newState = event.data.new_state;
+      if (newState && newState.state) {
+        const inputNumber = parseFloat(newState.state);
+        if (inputNumber !== 0) {
+          const calcIndex = this.calcIndex(inputNumber);
+          if (calcIndex >= 0) {
+            this.scrollToCardByIndex(calcIndex).then(() => {
+              this.resetInputNumber();
+            });
+          }
+        }
+      }
+    }
+  }
+
+  resetInputNumber() {
+    if (!this._hass) {
+      console.error("HASS not available");
+      return;
+    }
+
+    const inputNumberEntity = `input_number.${this.config.cardId}`;
+    this._hass.callService("input_number", "set_value", {
+      entity_id: inputNumberEntity,
+      value: 0
+    }).catch((error) => {
+      console.error("Failed to reset input_number:", error);
+    });
+  }
+
+  calcIndex(inputNumber) {
+    return inputNumber - 1;
+  }
+
+  // Pagination setup and update methods
   setupPagination() {
     const paginationControl = this.shadowRoot.querySelector('.pagination-control');
-    this._cards.forEach((card, index) => {
-      const label = document.createElement('label');
-      label.classList.add(`pagination-bullet-${index + 1}`);
-      label.addEventListener('click', () => this.scrollToCard(index));
-      paginationControl.appendChild(label);
+    if (!paginationControl) return;
+
+    // Clear existing pagination bullets
+    paginationControl.innerHTML = '';
+
+    this._cards.forEach((_, index) => {
+      const bullet = document.createElement('button');
+      bullet.classList.add('pagination-bullet');
+      bullet.setAttribute('aria-label', `Go to slide ${index + 1}`);
+      bullet.addEventListener('click', () => this.scrollToCard(index));
+      paginationControl.appendChild(bullet);
     });
 
     this.updatePagination();
   }
 
-  scrollToCard(index) {
-    const slider = this.shadowRoot.querySelector(`.${this.config.template}`);
-    const isHorizontal = this.config.template === 'slider-horizontal';
-    slider.scrollTo({
-      [isHorizontal ? 'left' : 'top']: index * (isHorizontal ? slider.clientWidth : slider.clientHeight),
-      behavior: 'smooth'
-    });
-    if (this.config.timer > 0) {
-      this.resetTimer(); // Reset the timer after scrolling
-    }
-  }
-
-  scrollToCardByIndex(index) {
-    const slider = this.shadowRoot.querySelector(`.${this.config.template}`);
-    if (!slider) {
-      return;
-    }
-    const isHorizontal = this.config.template === 'slider-horizontal';
-    const scrollPosition = index * (isHorizontal ? slider.clientWidth : slider.clientHeight);
-    slider.scrollTo({
-      [isHorizontal ? 'left' : 'top']: scrollPosition,
-      behavior: 'smooth'
-    });
-  }
-
   updatePagination() {
     const paginationControl = this.shadowRoot.querySelector('.pagination-control');
     if (!paginationControl) return;
-    const bullets = paginationControl.querySelectorAll('label');
-    const slider = this.shadowRoot.querySelector(`.${this.config.template}`);
-    const isHorizontal = this.config.template === 'slider-horizontal';
-    const scrollPosition = isHorizontal ? slider.scrollLeft / slider.clientWidth : slider.scrollTop / slider.clientHeight;
+
+    const bullets = paginationControl.querySelectorAll('.pagination-bullet');
     bullets.forEach((bullet, index) => {
-      bullet.classList.toggle('active', Math.round(scrollPosition) === index);
+      if (index === this.currentIndex) {
+        bullet.classList.add('active');
+        bullet.setAttribute('aria-current', 'true');
+      } else {
+        bullet.classList.remove('active');
+        bullet.removeAttribute('aria-current');
+      }
     });
   }
 
+  // Navigation setup and methods
   setupNavigation() {
     const prevButton = this.shadowRoot.querySelector('.navigation-button.prev-horizontal, .navigation-button.prev-vertical');
     const nextButton = this.shadowRoot.querySelector('.navigation-button.next-horizontal, .navigation-button.next-vertical');
@@ -426,15 +578,63 @@ class CssSwipeCard extends HTMLElement {
   }
 
   navigate(direction) {
+    const newIndex = Math.max(0, Math.min(this.currentIndex + direction, this._cards.length - 1));
+    this.scrollToCard(newIndex);
+  }
+
+  // Card scrolling methods
+  scrollToCard(index) {
     const slider = this.shadowRoot.querySelector(`.${this.config.template}`);
+    if (!slider) return;
+
     const isHorizontal = this.config.template === 'slider-horizontal';
-    const scrollAmount = isHorizontal ? slider.clientWidth : slider.clientHeight;
-    slider.scrollBy({
-      [isHorizontal ? 'left' : 'top']: direction * scrollAmount,
+    let scrollPosition = 0;
+
+    for (let i = 0; i < index; i++) {
+      scrollPosition += isHorizontal ? this._cards[i].clientWidth : this._cards[i].clientHeight;
+    }
+
+    slider.scrollTo({
+      [isHorizontal ? 'left' : 'top']: scrollPosition,
       behavior: 'smooth'
+    });
+
+    this.updateCurrentIndex();
+    this.updatePagination();
+
+    if (this.config.timer > 0) {
+      this.resetTimer();
+    }
+  }
+
+  scrollToCardByIndex(index) {
+    return new Promise((resolve) => {
+      const slider = this.shadowRoot.querySelector(`.${this.config.template}`);
+      if (!slider) {
+        resolve();
+        return;
+      }
+      const isHorizontal = this.config.template === 'slider-horizontal';
+      const maxIndex = this._cards.length - 1;
+      const safeIndex = Math.max(0, Math.min(Math.round(index), maxIndex));
+      const scrollPosition = safeIndex * (isHorizontal ? slider.clientWidth : slider.clientHeight);
+    
+      const scrollEndHandler = () => {
+        slider.removeEventListener('scrollend', scrollEndHandler);
+        this.updatePagination();
+        resolve();
+      };
+    
+      slider.addEventListener('scrollend', scrollEndHandler);
+    
+      slider.scrollTo({
+        [isHorizontal ? 'left' : 'top']: scrollPosition,
+        behavior: 'smooth'
+      });
     });
   }
 
+  // Timer setup and reset methods
   setupTimer() {
     if (this.config.timer > 0) {
       this.resetTimer();
@@ -451,14 +651,35 @@ class CssSwipeCard extends HTMLElement {
     }
     this.timerInterval = setTimeout(() => {
       const slider = this.shadowRoot.querySelector(`.${this.config.template}`);
-      this.scrollToCard(0); // Always scroll to the first card (index 0)
+      this.scrollToCard(0);
     }, this.config.timer * 1000);
   }
 
+  // Cleanup method
   disconnectedCallback() {
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect();
+    }
     if (this.timerInterval) {
       clearInterval(this.timerInterval);
     }
   }
+
+  // Custom styles application method
+  applyCustomStyles() {
+    const style = document.createElement('style');
+    style.textContent = Object.entries(this.config.custom_css)
+      .map(([property, value]) => `#${this.cardId} { ${property}: ${value}; }`)
+      .join('\n');
+    this.shadowRoot.appendChild(style);
+  }
 }
+
 customElements.define('css-swipe-card', CssSwipeCard);
+
+window.customCards = window.customCards || [];
+window.customCards.push({
+  type: "css-swipe-card",
+  name: "CSS Swipe Card",
+  description: "A custom swipe card and carousel"
+});
