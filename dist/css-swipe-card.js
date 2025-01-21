@@ -1,6 +1,6 @@
 class CssSwipeCard extends HTMLElement {
   static get version() {
-    return 'v0.8.0';
+    return 'v0.9.2';
   }
 
   constructor() {
@@ -8,16 +8,21 @@ class CssSwipeCard extends HTMLElement {
     this.attachShadow({ mode: 'open' });
     this.currentIndex = 0;
     this.resizeObserver = null;
+
+    // Holds the interval ID for the auto-scroll feature
+    this.autoScrollInterval = null;
   }
 
-  // Core setup and rendering methods
+  // --- Core setup and rendering methods ---
   setConfig(config) {
     if (!config || !config.cards || !Array.isArray(config.cards)) {
       throw new Error('You need to define cards');
     }
 
+    // Generate a random cardId if one isn't provided
     this.cardId = config.cardId || `css-swipe-card-${Math.random().toString(36).substr(2, 9)}`;
 
+    // Merge user config with defaults
     this.config = {
       width: '100%',
       template: 'slider-horizontal',
@@ -30,6 +35,8 @@ class CssSwipeCard extends HTMLElement {
       navigation_prev: '',
       custom_css: {},
       cardId: this.cardId,
+      // Auto-scroll delay in seconds (0 = disabled)
+      auto_scroll_delay: 0,
       ...config
     };
 
@@ -45,6 +52,7 @@ class CssSwipeCard extends HTMLElement {
     const cardContainer = this.shadowRoot.querySelector(`.${this.config.template}`);
     this._cards = [];
 
+    // Create each slide/card
     for (const [index, cardConfig] of this.config.cards.entries()) {
       const card = await this.createCardElement(cardConfig);
       const slide = document.createElement('div');
@@ -57,36 +65,46 @@ class CssSwipeCard extends HTMLElement {
       this._cards.push(card);
     }
 
+    // Adjust height
     if (this.config.auto_height) {
       this.setupResizeObserver();
     } else {
       await this.setManualHeight();
     }
 
+    // Apply any custom CSS from user config
     this.applyCustomStyles();
 
+    // Optional pagination dots
     if (this.config.pagination) {
       this.setupPagination();
     }
 
+    // Optional navigation buttons
     if (this.config.navigation) {
       this.setupNavigation();
     }
 
+    // Inactivity timer (returns to first card if no interaction)
     this.setupTimer();
 
+    // Auto-scroll (cycles slides on a defined interval)
+    this.setupAutoScroll();
+
+    // Update currentIndex/pagination on scroll
     const slider = this.shadowRoot.querySelector(`.${this.config.template}`);
     slider.addEventListener('scroll', () => {
       this.updateCurrentIndex();
       this.updatePagination();
     });
     
+    // If Hass is available, handle input_number changes
     if (this._hass) {
       this.checkInputNumberState();
     }
   }
 
-  // HTML and CSS generation methods
+  // --- HTML and CSS generation methods ---
   getStyles() {
     return `
       :host {
@@ -157,12 +175,12 @@ class CssSwipeCard extends HTMLElement {
       }
       #${this.cardId} .slider-horizontal,
       #${this.cardId} .slider-vertical {
+        /* Hide scrollbars */
         &::-webkit-scrollbar {
           display: none;
         }
         scrollbar-width: none;
         -ms-overflow-style: none;
-        
       }
       #${this.cardId} .slide {
         display: flex;
@@ -306,20 +324,36 @@ class CssSwipeCard extends HTMLElement {
     return `
       <div id="${this.cardId}">
         <div class="${this.config.template}"></div>
-        ${this.config.pagination ? `<div class="pagination-control ${this.config.template === 'slider-horizontal' ? 'horizontal' : 'vertical'}"></div>` : ''}
-        ${this.config.navigation ? `
+        ${
+          this.config.pagination 
+            ? `<div class="pagination-control ${this.config.template === 'slider-horizontal' ? 'horizontal' : 'vertical'}"></div>`
+            : ''
+        }
+        ${
+          this.config.navigation
+            ? `
           <button class="navigation-button prev-${this.config.template === 'slider-horizontal' ? 'horizontal' : 'vertical'}">
-            ${this.config.navigation_prev ? `<ha-icon icon="${this.config.navigation_prev}"></ha-icon>` : (this.config.template === 'slider-horizontal' ? '&lt;' : '&uarr;')}
+            ${
+              this.config.navigation_prev 
+                ? `<ha-icon icon="${this.config.navigation_prev}"></ha-icon>` 
+                : (this.config.template === 'slider-horizontal' ? '&lt;' : '&uarr;')
+            }
           </button>
           <button class="navigation-button next-${this.config.template === 'slider-horizontal' ? 'horizontal' : 'vertical'}">
-            ${this.config.navigation_next ? `<ha-icon icon="${this.config.navigation_next}"></ha-icon>` : (this.config.template === 'slider-horizontal' ? '&gt;' : '&darr;')}
+            ${
+              this.config.navigation_next 
+                ? `<ha-icon icon="${this.config.navigation_next}"></ha-icon>` 
+                : (this.config.template === 'slider-horizontal' ? '&gt;' : '&darr;')
+            }
           </button>
-        ` : ''}
+        `
+            : ''
+        }
       </div>
     `;
   }
 
-  // Card creation and sizing methods
+  // --- Card creation and sizing methods ---
   async createCardElement(cardConfig) {
     const createCard = (await loadCardHelpers()).createCardElement;
     const element = createCard(cardConfig);
@@ -328,12 +362,9 @@ class CssSwipeCard extends HTMLElement {
   }
 
   async getCardSize() {
-    if (!this._cards) {
-      return 0;
-    }
+    if (!this._cards) return 0;
 
     let maxHeight = 0;
-
     for (const card of this._cards) {
       if (card.getCardSize) {
         const size = await card.getCardSize();
@@ -344,7 +375,6 @@ class CssSwipeCard extends HTMLElement {
         maxHeight = Math.max(maxHeight, rect.height);
       }
     }
-
     return maxHeight || 140; // fallback to 140 if maxHeight is 0
   }
 
@@ -358,32 +388,33 @@ class CssSwipeCard extends HTMLElement {
     return maxHeight || 140;  // Fallback height
   }
 
-  // Card container height adjustment methods
+  // --- Card container height adjustment methods ---
   async adjustCardContainerHeight() {
     const cardContainer = this.shadowRoot.querySelector(`.${this.config.template}`);
     const slideContainer = this.shadowRoot.querySelector(`.slide`);
     const maxHeight = await this.getMaxCardHeight();
 
     if (this.config.auto_height) {
-        this._cards.forEach(card => {
-            card.style.height = `${maxHeight}px`;
-        });
-        cardContainer.style.height = `${maxHeight}px`;
-        slideContainer.style.height = `${maxHeight}px`;
+      this._cards.forEach(card => {
+        card.style.height = `${maxHeight}px`;
+      });
+      cardContainer.style.height = `${maxHeight}px`;
+      slideContainer.style.height = `${maxHeight}px`;
     } else {
-        cardContainer.style.height = `${maxHeight}px`;
-        slideContainer.style.height = `${maxHeight}px`;
-        this._cards.forEach(card => {
-            card.style.height = 'auto';  // Keeps native height for cards
-        });
+      cardContainer.style.height = `${maxHeight}px`;
+      slideContainer.style.height = `${maxHeight}px`;
+      this._cards.forEach(card => {
+        card.style.height = 'auto';
+      });
     }
 
+    // If a specific "height:" was provided in config (and not using auto_height)
     if (this.config.height && !this.config.auto_height) {
-        cardContainer.style.height = this.config.height;
-        slideContainer.style.height = this.config.height;
-        this._cards.forEach(card => {
-            card.style.height = this.config.height;
-        });
+      cardContainer.style.height = this.config.height;
+      slideContainer.style.height = this.config.height;
+      this._cards.forEach(card => {
+        card.style.height = this.config.height;
+      });
     }
   }
 
@@ -395,7 +426,6 @@ class CssSwipeCard extends HTMLElement {
       cardContainer.style.height = this.config.height;
       cardContainer.style.overflowY = 'hidden';
     } else {
-      // For vertical mode
       const maxHeight = await this.getMaxCardHeight();
       cardContainer.style.height = this.config.height || `${maxHeight}px`;
       cardContainer.style.overflowY = 'auto';
@@ -405,17 +435,16 @@ class CssSwipeCard extends HTMLElement {
       if (isHorizontal) {
         card.style.height = this.config.height;
       } else {
-        card.style.height = 'auto'; // Keep native height for cards in vertical mode
+        card.style.height = 'auto'; // Keep native height for vertical mode
       }
     });
   }
 
-  // Resize observer setup
+  // --- Resize observer setup ---
   setupResizeObserver() {
     if (this.resizeObserver) {
       this.resizeObserver.disconnect();
     }
-
     this.resizeObserver = new ResizeObserver(() => {
       this.adjustCardContainerHeight();
       this.updateCurrentIndex();
@@ -427,13 +456,12 @@ class CssSwipeCard extends HTMLElement {
     });
   }
 
-  // Current index update method
+  // --- Current index update method ---
   updateCurrentIndex() {
     const slider = this.shadowRoot.querySelector(`.${this.config.template}`);
     const isHorizontal = this.config.template === 'slider-horizontal';
     const scrollPosition = isHorizontal ? slider.scrollLeft : slider.scrollTop;
-    const viewportSize = isHorizontal ? slider.clientWidth : slider.clientHeight;
-    
+
     let accumulatedSize = 0;
     for (let i = 0; i < this._cards.length; i++) {
       const cardSize = isHorizontal ? this._cards[i].clientWidth : this._cards[i].clientHeight;
@@ -445,11 +473,12 @@ class CssSwipeCard extends HTMLElement {
     }
   }
 
-  // Home Assistant integration methods
+  // --- Home Assistant integration methods ---
   set hass(hass) {
     const oldHass = this._hass;
     this._hass = hass;
 
+    // If oldHass is undefined, it's the first time we're setting hass
     if (!oldHass) {
       this.setupInputNumberListener();
       this.checkInputNumberState();
@@ -464,6 +493,7 @@ class CssSwipeCard extends HTMLElement {
       });
     }
 
+    // If the input_number changed, respond accordingly
     const inputNumberEntity = `input_number.${this.config.cardId}`;
     if (oldHass && hass.states[inputNumberEntity] !== oldHass.states[inputNumberEntity]) {
       this.checkInputNumberState();
@@ -517,24 +547,20 @@ class CssSwipeCard extends HTMLElement {
 
   resetInputNumber() {
     if (!this._hass) {
-      console.error("HASS not available");
       return;
     }
-
     const inputNumberEntity = `input_number.${this.config.cardId}`;
     this._hass.callService("input_number", "set_value", {
       entity_id: inputNumberEntity,
       value: 0
-    }).catch((error) => {
-      console.error("Failed to reset input_number:", error);
-    });
+    }).catch(() => {});
   }
 
   calcIndex(inputNumber) {
-    return inputNumber - 1;
+    return inputNumber - 1; // input_number "1" => index "0", etc.
   }
 
-  // Pagination setup and update methods
+  // --- Pagination setup and update methods ---
   setupPagination() {
     const paginationControl = this.shadowRoot.querySelector('.pagination-control');
     if (!paginationControl) return;
@@ -569,12 +595,16 @@ class CssSwipeCard extends HTMLElement {
     });
   }
 
-  // Navigation setup and methods
+  // --- Navigation setup and methods ---
   setupNavigation() {
     const prevButton = this.shadowRoot.querySelector('.navigation-button.prev-horizontal, .navigation-button.prev-vertical');
     const nextButton = this.shadowRoot.querySelector('.navigation-button.next-horizontal, .navigation-button.next-vertical');
-    if (prevButton) prevButton.addEventListener('click', () => this.navigate(-1));
-    if (nextButton) nextButton.addEventListener('click', () => this.navigate(1));
+    if (prevButton) {
+      prevButton.addEventListener('click', () => this.navigate(-1));
+    }
+    if (nextButton) {
+      nextButton.addEventListener('click', () => this.navigate(1));
+    }
   }
 
   navigate(direction) {
@@ -582,7 +612,7 @@ class CssSwipeCard extends HTMLElement {
     this.scrollToCard(newIndex);
   }
 
-  // Card scrolling methods
+  // --- Card scrolling methods ---
   scrollToCard(index) {
     const slider = this.shadowRoot.querySelector(`.${this.config.template}`);
     if (!slider) return;
@@ -599,9 +629,11 @@ class CssSwipeCard extends HTMLElement {
       behavior: 'smooth'
     });
 
+    // Update index & pagination after scroll
     this.updateCurrentIndex();
     this.updatePagination();
 
+    // Reset the inactivity timer if present
     if (this.config.timer > 0) {
       this.resetTimer();
     }
@@ -614,27 +646,27 @@ class CssSwipeCard extends HTMLElement {
         resolve();
         return;
       }
+
       const isHorizontal = this.config.template === 'slider-horizontal';
       const maxIndex = this._cards.length - 1;
       const safeIndex = Math.max(0, Math.min(Math.round(index), maxIndex));
       const scrollPosition = safeIndex * (isHorizontal ? slider.clientWidth : slider.clientHeight);
-    
-      const scrollEndHandler = () => {
-        slider.removeEventListener('scrollend', scrollEndHandler);
-        this.updatePagination();
-        resolve();
-      };
-    
-      slider.addEventListener('scrollend', scrollEndHandler);
-    
+
       slider.scrollTo({
         [isHorizontal ? 'left' : 'top']: scrollPosition,
         behavior: 'smooth'
       });
+
+      // Give it a short time to finish scrolling, then update
+      setTimeout(() => {
+        this.updateCurrentIndex();
+        this.updatePagination();
+        resolve();
+      }, 400);
     });
   }
 
-  // Timer setup and reset methods
+  // --- Timer setup and reset methods ---
   setupTimer() {
     if (this.config.timer > 0) {
       this.resetTimer();
@@ -650,12 +682,27 @@ class CssSwipeCard extends HTMLElement {
       clearInterval(this.timerInterval);
     }
     this.timerInterval = setTimeout(() => {
-      const slider = this.shadowRoot.querySelector(`.${this.config.template}`);
       this.scrollToCard(0);
     }, this.config.timer * 1000);
   }
 
-  // Cleanup method
+  // --- Auto-scroll through all slides on a set interval ---
+  setupAutoScroll() {
+    // If auto_scroll_delay is set (> 0) and there are multiple slides, cycle them
+    if (this.config.auto_scroll_delay > 0 && this._cards.length > 1) {
+      // Clear any existing auto-scroll interval
+      if (this.autoScrollInterval) {
+        clearInterval(this.autoScrollInterval);
+      }
+      this.autoScrollInterval = setInterval(() => {
+        // Move to the next index, wrapping around
+        this.currentIndex = (this.currentIndex + 1) % this._cards.length;
+        this.scrollToCard(this.currentIndex);
+      }, this.config.auto_scroll_delay * 1000);
+    }
+  }
+
+  // --- Cleanup method ---
   disconnectedCallback() {
     if (this.resizeObserver) {
       this.resizeObserver.disconnect();
@@ -663,9 +710,12 @@ class CssSwipeCard extends HTMLElement {
     if (this.timerInterval) {
       clearInterval(this.timerInterval);
     }
+    if (this.autoScrollInterval) {
+      clearInterval(this.autoScrollInterval);
+    }
   }
 
-  // Custom styles application method
+  // --- Custom styles application method ---
   applyCustomStyles() {
     const style = document.createElement('style');
     style.textContent = Object.entries(this.config.custom_css)
@@ -681,5 +731,5 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type: "css-swipe-card",
   name: "CSS Swipe Card",
-  description: "A custom swipe card and carousel"
+  description: "A custom swipe card/carousel with optional auto-scroll & input_number controls"
 });
