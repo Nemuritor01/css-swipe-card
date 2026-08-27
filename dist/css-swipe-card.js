@@ -111,6 +111,20 @@ class CssSwipeCard extends HTMLElement {
     const gapFloor = (this.paddingIsExplicit && parseFloat(pad) > 0)
       ? `calc(${pad} + var(--slides-shadow-clearance))`
       : '0px';
+    // The wrapper must not clip the overhang the slider reclaims with its
+    // negative margin. `visible` is the baseline because WebKit does not
+    // implement overflow-clip-margin — under `clip` it would ignore the margin
+    // and shear the side shadows off. The safer `clip` form, which cannot
+    // produce a stray scrollbar, is layered on below where it is supported.
+    const wrapperOverflow = this.paddingIsExplicit ? 'visible' : 'hidden';
+    const wrapperClipSupport = this.paddingIsExplicit
+      ? `@supports (overflow-clip-margin: 1px) {
+        #${this.cardId} {
+          overflow: clip;
+          overflow-clip-margin: ${pad};
+        }
+      }`
+      : '';
     return `
       :host {
         --slides-gap: ${this.config.card_gap};
@@ -137,11 +151,7 @@ class CssSwipeCard extends HTMLElement {
       }
       #${this.cardId} {
         position: relative;
-        /* clip rather than hidden: this still prevents the overhang from
-           creating a scrollbar, but overflow-clip-margin lets the slides'
-           box-shadows render into the padding the slider reclaims below. */
-        overflow: clip;
-        overflow-clip-margin: ${padCross};
+        overflow: ${wrapperOverflow};
 
         /* Force hardware acceleration with 3D transform */
         transform: translateZ(0);
@@ -163,6 +173,7 @@ class CssSwipeCard extends HTMLElement {
         will-change: transform;
         -webkit-overflow-scrolling: touch;
       }
+      ${wrapperClipSupport}
       #${this.cardId} .slider-horizontal {
         display: flex;
         /* content-box is load-bearing: adjustCardContainerHeight() assigns an
