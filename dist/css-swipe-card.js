@@ -87,6 +87,18 @@ class CssSwipeCard extends HTMLElement {
 
     this.setupTimer();
 
+    // Returning from the background is not guaranteed to resize anything, so
+    // the ResizeObserver may never fire to undo a collapsed layout. Re-measure
+    // explicitly once the document is visible again.
+    if (!this._onVisibilityChange) {
+      this._onVisibilityChange = () => {
+        if (!document.hidden) {
+          this.adjustCardContainerHeight();
+        }
+      };
+      document.addEventListener('visibilitychange', this._onVisibilityChange);
+    }
+
     const slider = this.shadowRoot.querySelector(`.${this.config.template}`);
     slider.addEventListener('scroll', () => {
       this.updateCurrentIndex();
@@ -414,7 +426,14 @@ class CssSwipeCard extends HTMLElement {
     let maxHeight = 0;
     for (const card of this._cards) {
       await card.updateComplete;  // Ensure card is fully rendered
+      // Release any height we pinned earlier before measuring. Otherwise we
+      // measure our own previous output instead of the card's natural height,
+      // which makes a single bad reading permanent and stops auto_height from
+      // ever following content that grows.
+      const pinned = card.style.height;
+      card.style.height = 'auto';
       const rect = card.getBoundingClientRect();
+      card.style.height = pinned;
       maxHeight = Math.max(maxHeight, rect.height);
     }
     return maxHeight || 140;  // Fallback height
@@ -422,6 +441,13 @@ class CssSwipeCard extends HTMLElement {
 
   // Card container height adjustment methods
   async adjustCardContainerHeight() {
+    // A hidden document — backgrounded app, inactive tab — lays every element
+    // out at ~0. Measuring then and writing the result back would pin the cards
+    // to a collapsed height that survives the return to the foreground.
+    if (document.hidden || !this.isConnected) {
+      return;
+    }
+
     const cardContainer = this.shadowRoot.querySelector(`.${this.config.template}`);
     const slideContainer = this.shadowRoot.querySelector(`.slide`);
     const maxHeight = await this.getMaxCardHeight();
@@ -724,6 +750,10 @@ class CssSwipeCard extends HTMLElement {
     }
     if (this.timerInterval) {
       clearInterval(this.timerInterval);
+    }
+    if (this._onVisibilityChange) {
+      document.removeEventListener('visibilitychange', this._onVisibilityChange);
+      this._onVisibilityChange = null;
     }
   }
 
