@@ -13,7 +13,7 @@ The code might not follow best practise methods. Contributors are welcome.
 
 ## Table of contents
 
-**[`Installation`](#installation)**  **[`Configuration`](#configuration)** **[`Styling`](#styling)**  **[`Automations`](#automations)**  **[`Credits`](#credits)** 
+**[`Installation`](#installation)**  **[`Configuration`](#configuration)** **[`Drop shadows`](#drop-shadows)** **[`Styling`](#styling)**  **[`Automations`](#automations)**  **[`Credits`](#credits)** 
 
 <br>
 
@@ -86,13 +86,47 @@ Add a card with type `custom:css-swipe-card`:
 | `template` | string | slider-horizontal | slider-horizontal, slider-vertical |
 | `height` | string | | Any css option that fits in the `height` css value | Will force the height of the swiper container |
 | `auto_height` | boolean | false | true, false | force the same heigth, based on the tallest card |
-| `card_gap` | string | 0px | Any css option that fits in the `width` css value | |
+| `card_gap` | string | 0px | Any css option that fits in the `width` css value | space between slides |
+| `card_padding` | string | falls back to `card_gap` | Any css length | breathing room the slider keeps around each slide so nested cards' `box-shadow` is not clipped — see [`Drop shadows`](#drop-shadows) |
 | `timer` | number | 0 | Any number | Will reset the swiper to the first card after `timer` seconds |
 | `pagination` | boolean | false | true, false | enable pagination bullets |
+| `pagination_position` | string | overlay | overlay, below | `overlay` floats the bullets over the bottom of the slides; `below` places them in their own row underneath |
 | `navigation` | boolean | false | true, false | enable navigation buttons |
 | `navigation_next` | icon | none | any icon in home assistant (mdi:xxx; fas:xxx) | set icon in navigation button next |
 | `navigation_prev` | icon | none | any icon in home assistant (mdi:xxx; fas:xxx) | set icon in navigation button previous |
 | `custom_css` | | none | see [`Styling`](#styling) | customize design of the swipe card based on various shortcuts |
+
+## Drop shadows
+
+A slider is a scroll container, and a scroll container clips anything drawn outside
+it. Cards with a `box-shadow` therefore get sheared off at the edges of the slider —
+the shadow is painted outside the card's border box, so it lands in territory the
+container clips away.
+
+`card_padding` fixes this by giving the slider padding on all four sides. `overflow`
+clips at the *padding* box, not the content box, so the shadow now has somewhere to
+render. The padding is cancelled again with a matching negative inline margin, which
+means the slide keeps its full width and the card lines up exactly where it would
+without a slider around it.
+
+```yaml
+type: custom:css-swipe-card
+card_gap: 16px
+card_padding: 8px
+cards: ...
+```
+
+Two rules worth knowing:
+
+- **`card_gap` must exceed `card_padding` by at least the shadow's blur radius.**
+  Otherwise the *next* slide sits close enough that its shadow bleeds into view while
+  you are resting on the current one. The card enforces a floor automatically —
+  `gap: max(card_gap, card_padding + var(--slides-shadow-clearance))` — so you cannot
+  accidentally configure the bleed. Raise `--slides-shadow-clearance` (default `6px`)
+  if your shadows are unusually soft.
+- **Leaving `card_padding` unset preserves the old behaviour**, where the side padding
+  simply tracked `card_gap`. Existing configurations render as they always did; only
+  the snap position is corrected, so a sliver of the next slide no longer shows.
 
 ## Styles
 
@@ -101,6 +135,7 @@ Option `custom_css:`gives the ability to customize lots of css variables
 | Variable | Default |
 | -------- | ------- |
 | `--slides-align-items` | center |
+| `--slides-shadow-clearance` | 6px |
 | `--pagination-bullet-active-background-color` | var(--primary-text-color) |
 | `--pagination-bullet-background-color` | var(--primary-background-color) |
 | `--pagination-bullet-border` | 1px solid #999 |
