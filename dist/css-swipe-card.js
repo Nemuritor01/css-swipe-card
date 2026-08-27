@@ -23,8 +23,10 @@ class CssSwipeCard extends HTMLElement {
       template: 'slider-horizontal',
       auto_height: false,
       card_gap: '0px',
+      card_padding: null,
       timer: 0,
       pagination: false,
+      pagination_position: 'overlay',
       navigation: false,
       navigation_next: '',
       navigation_prev: '',
@@ -32,6 +34,16 @@ class CssSwipeCard extends HTMLElement {
       cardId: this.cardId,
       ...config
     };
+
+    // `card_padding` is the breathing room the slider keeps around each slide so
+    // that box-shadows on the nested cards are not sheared off by the scroll
+    // container. When it is not given we fall back to `card_gap`, which is what
+    // the side padding used to be hard-wired to — that keeps existing configs
+    // looking the way they did.
+    this.paddingIsExplicit = this.config.card_padding !== null;
+    if (!this.paddingIsExplicit) {
+      this.config.card_padding = this.config.card_gap;
+    }
 
     this.render();
   }
@@ -75,6 +87,18 @@ class CssSwipeCard extends HTMLElement {
 
     this.setupTimer();
 
+    // Returning from the background is not guaranteed to resize anything, so
+    // the ResizeObserver may never fire to undo a collapsed layout. Re-measure
+    // explicitly once the document is visible again.
+    if (!this._onVisibilityChange) {
+      this._onVisibilityChange = () => {
+        if (!document.hidden) {
+          this.adjustCardContainerHeight();
+        }
+      };
+      document.addEventListener('visibilitychange', this._onVisibilityChange);
+    }
+
     const slider = this.shadowRoot.querySelector(`.${this.config.template}`);
     slider.addEventListener('scroll', () => {
       this.updateCurrentIndex();
@@ -88,9 +112,36 @@ class CssSwipeCard extends HTMLElement {
 
   // HTML and CSS generation methods
   getStyles() {
+    const pad = this.config.card_padding;
+    // Cross-axis padding and the matching negative margin only apply when
+    // card_padding was set explicitly; without it we reproduce the old layout,
+    // where the side padding simply tracked card_gap.
+    const padCross = this.paddingIsExplicit ? pad : '0px';
+    const marginInline = this.paddingIsExplicit ? `calc(-1 * ${pad})` : '0px';
+    // A neighbouring slide sits flush against the clip edge, so its shadow
+    // bleeds into view unless the gap clears the padding by a shadow's width.
+    const gapFloor = (this.paddingIsExplicit && parseFloat(pad) > 0)
+      ? `calc(${pad} + var(--slides-shadow-clearance))`
+      : '0px';
+    // The wrapper must not clip the overhang the slider reclaims with its
+    // negative margin. `visible` is the baseline because WebKit does not
+    // implement overflow-clip-margin — under `clip` it would ignore the margin
+    // and shear the side shadows off. The safer `clip` form, which cannot
+    // produce a stray scrollbar, is layered on below where it is supported.
+    const wrapperOverflow = this.paddingIsExplicit ? 'visible' : 'hidden';
+    const wrapperClipSupport = this.paddingIsExplicit
+      ? `@supports (overflow-clip-margin: 1px) {
+        #${this.cardId} {
+          overflow: clip;
+          overflow-clip-margin: ${pad};
+        }
+      }`
+      : '';
     return `
       :host {
         --slides-gap: ${this.config.card_gap};
+        --slides-padding: ${pad};
+        --slides-shadow-clearance: 6px;
         --slides-align-items: center;
         --pagination-bullet-active-background-color: var(--primary-text-color);
         --pagination-bullet-background-color: var(--primary-background-color);
@@ -110,10 +161,10 @@ class CssSwipeCard extends HTMLElement {
         --navigation-button-prev-border: none;
         --navigation-button-distance: 10px;
       }
-      #${this.cardId} { 
+      #${this.cardId} {
         position: relative;
-        overflow: hidden;
-        
+        overflow: ${wrapperOverflow};
+
         /* Force hardware acceleration with 3D transform */
         transform: translateZ(0);
         -webkit-transform: translateZ(0);
@@ -134,26 +185,41 @@ class CssSwipeCard extends HTMLElement {
         will-change: transform;
         -webkit-overflow-scrolling: touch;
       }
+      ${wrapperClipSupport}
       #${this.cardId} .slider-horizontal {
         display: flex;
+        /* content-box is load-bearing: adjustCardContainerHeight() assigns an
+           inline height measured with getBoundingClientRect(), which excludes
+           shadows. Under border-box the padding would eat that height and
+           squeeze the cards instead of freeing the shadow. */
+        box-sizing: content-box;
         overflow-x: auto;
         overflow-y: hidden;
         scroll-snap-type: x mandatory;
         scroll-behavior: smooth;
         position: relative;
-        gap: var(--slides-gap);
-        padding-inline: var(--slides-gap);
+        gap: max(var(--slides-gap), ${gapFloor});
+        padding-inline: ${pad};
+        padding-block: ${padCross};
+        /* Cancel the inline padding in layout so the slide keeps its full
+           width; the padding box grows outward over the clip margin instead. */
+        margin-inline: ${marginInline};
+        scroll-padding-inline: ${pad};
       }
       #${this.cardId} .slider-vertical {
         display: flex;
         flex-direction: column;
+        box-sizing: content-box;
         overflow-y: auto;
         overflow-x: hidden;
         scroll-snap-type: y mandatory;
         scroll-behavior: smooth;
         position: relative;
-        gap: var(--slides-gap);
-        padding-block: var(--slides-gap);
+        gap: max(var(--slides-gap), ${gapFloor});
+        padding-block: ${pad};
+        padding-inline: ${padCross};
+        margin-inline: ${marginInline};
+        scroll-padding-block: ${pad};
       }
       #${this.cardId} .slider-horizontal,
       #${this.cardId} .slider-vertical {
@@ -184,6 +250,14 @@ class CssSwipeCard extends HTMLElement {
         transform: translateX(-50%);
         display: flex;
         gap: 10px;
+      }
+      #${this.cardId} .pagination-control.horizontal.below {
+        /* In normal flow the bullets sit under the slides and claim their own
+           height, instead of floating on top of the bottom card. */
+        position: static;
+        transform: none;
+        justify-content: center;
+        margin-top: var(--pagination-bullet-distance);
       }
       #${this.cardId} .pagination-control.vertical {
         position: absolute;
@@ -306,7 +380,7 @@ class CssSwipeCard extends HTMLElement {
     return `
       <div id="${this.cardId}">
         <div class="${this.config.template}"></div>
-        ${this.config.pagination ? `<div class="pagination-control ${this.config.template === 'slider-horizontal' ? 'horizontal' : 'vertical'}"></div>` : ''}
+        ${this.config.pagination ? `<div class="pagination-control ${this.config.template === 'slider-horizontal' ? 'horizontal' : 'vertical'}${this.config.pagination_position === 'below' ? ' below' : ''}"></div>` : ''}
         ${this.config.navigation ? `
           <button class="navigation-button prev-${this.config.template === 'slider-horizontal' ? 'horizontal' : 'vertical'}">
             ${this.config.navigation_prev ? `<ha-icon icon="${this.config.navigation_prev}"></ha-icon>` : (this.config.template === 'slider-horizontal' ? '&lt;' : '&uarr;')}
@@ -352,7 +426,14 @@ class CssSwipeCard extends HTMLElement {
     let maxHeight = 0;
     for (const card of this._cards) {
       await card.updateComplete;  // Ensure card is fully rendered
+      // Release any height we pinned earlier before measuring. Otherwise we
+      // measure our own previous output instead of the card's natural height,
+      // which makes a single bad reading permanent and stops auto_height from
+      // ever following content that grows.
+      const pinned = card.style.height;
+      card.style.height = 'auto';
       const rect = card.getBoundingClientRect();
+      card.style.height = pinned;
       maxHeight = Math.max(maxHeight, rect.height);
     }
     return maxHeight || 140;  // Fallback height
@@ -360,6 +441,13 @@ class CssSwipeCard extends HTMLElement {
 
   // Card container height adjustment methods
   async adjustCardContainerHeight() {
+    // A hidden document — backgrounded app, inactive tab — lays every element
+    // out at ~0. Measuring then and writing the result back would pin the cards
+    // to a collapsed height that survives the return to the foreground.
+    if (document.hidden || !this.isConnected) {
+      return;
+    }
+
     const cardContainer = this.shadowRoot.querySelector(`.${this.config.template}`);
     const slideContainer = this.shadowRoot.querySelector(`.slide`);
     const maxHeight = await this.getMaxCardHeight();
@@ -662,6 +750,10 @@ class CssSwipeCard extends HTMLElement {
     }
     if (this.timerInterval) {
       clearInterval(this.timerInterval);
+    }
+    if (this._onVisibilityChange) {
+      document.removeEventListener('visibilitychange', this._onVisibilityChange);
+      this._onVisibilityChange = null;
     }
   }
 
